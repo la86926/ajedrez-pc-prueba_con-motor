@@ -773,7 +773,7 @@ footer a{color:var(--muted)}
    <!-- NUEVO: Reiniciar / Ant / Sig debajo del tablero, cerca de la mano -->
     <div style="display:flex; gap:.5rem; width:100%; max-width:560px; margin:.7rem auto 0;">
       <button class="btn" id="b-reset" style="flex:1; justify-content:center; padding:.6rem .4rem; font-size:0.95rem; font-weight:600;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 3-6.7L3 8m0-5v5h5"/></svg>Reiniciar</button>
-      <button class="btn" id="b-edit" style="flex:1; justify-content:center; padding:.6rem .4rem; font-size:0.95rem; font-weight:600;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>Analizar v1</button>
+      <button class="btn" id="b-edit" style="flex:1; justify-content:center; padding:.6rem .4rem; font-size:0.95rem; font-weight:600;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>Analizar4</button>
       <button class="btn" id="b-prev-top" style="flex:1; justify-content:center; padding:.6rem .4rem; font-size:0.95rem; font-weight:600;">◂ Ant</button>
       
       <button class="btn" id="b-next-top" style="flex:1; justify-content:center; padding:.6rem .4rem; font-size:0.95rem; font-weight:600;">Sig ▸</button>
@@ -4945,17 +4945,40 @@ document.querySelectorAll('#tabs .tab').forEach(t=>t.onclick=()=>{   // % CAMBIO
 });
 
 /* teclado */
+/* teclado */
 document.addEventListener('keydown',e=>{
-  if(e.target.tagName==='INPUT')return;
-  if(!$('v-train').classList.contains('active'))return;
+  if(e.target.tagName==='INPUT') return;
+  if(!$('v-train').classList.contains('active')) return;
+
   const k=e.key.toLowerCase();
-  if(e.key==='ArrowRight'){go(1);}
-  else if(e.key==='ArrowLeft'){go(-1);}
+
+  if(e.key==='ArrowRight'){
+    if(state.freemode){
+      e.preventDefault();
+      if(state.anaMoves) irAJugada(state.anaPtr+1);
+    }else{
+      go(1);
+    }
+  }
+
+  else if(e.key==='ArrowLeft'){
+    if(state.freemode){
+      e.preventDefault();
+      if(state.anaMoves) irAJugada(state.anaPtr-1);
+    }else{
+      go(-1);
+    }
+  }
+
   else if(k==='h'){$('b-hint').click();}
   else if(k==='s'){$('b-sol').click();}
   else if(k==='r'){$('b-reset').click();}
   else if(k==='f'){$('b-flip').click();}
 });
+
+
+
+  
 
 
 
@@ -5382,24 +5405,212 @@ $('b-engine').onclick=()=>{
 
 // NUEVO: desliza la pieza de la última jugada desde su origen hasta el destino
 function animarUltimaJugada(){
-  if(state.sinAnimacion) return;                       // permite saltar la animación (ej. al girar)
-  const h=state.game.history({verbose:true});
-  if(!h.length) return;
-  const m=h[h.length-1];
-  const destino=cellOf(m.to), origen=cellOf(m.from);
-  if(!destino||!origen) return;
-  const pieza=destino.querySelector('.pc');
-  if(!pieza) return;
-  const rd=destino.getBoundingClientRect();
-  const ro=origen.getBoundingClientRect();
-  const dx=ro.left-rd.left, dy=ro.top-rd.top;
-  if(dx===0 && dy===0) return;
-  pieza.style.transition='none';                        // la coloco "como si" estuviera en el origen
-  pieza.style.transform='translate('+dx+'px,'+dy+'px)';
-  requestAnimationFrame(()=>requestAnimationFrame(()=>{ // y la deslizo hasta su sitio real
-    pieza.style.transition='transform .18s ease';
-    pieza.style.transform='';
-  }));
+  const fenAnterior=state.tableroVisual;
+  const fenActual=state.game.fen();
+
+  // Guarda la posición actualmente visible para comparar en el siguiente renderizado
+  state.tableroVisual=fenActual;
+
+  if(state.sinAnimacion || !fenAnterior || fenAnterior===fenActual) return;
+
+  const antes=new Chess(fenAnterior);
+  const ahora=new Chess(fenActual);
+  const cambios=[];
+
+  for(const f of FILES){
+    for(let r=1;r<=8;r++){
+      const sq=f+r;
+      const piezaAntes=antes.get(sq);
+      const piezaAhora=ahora.get(sq);
+
+      const esIgual=
+        piezaAntes &&
+        piezaAhora &&
+        piezaAntes.color===piezaAhora.color &&
+        piezaAntes.type===piezaAhora.type;
+
+      if(!esIgual && (piezaAntes || piezaAhora)){
+        cambios.push({sq,antes:piezaAntes,ahora:piezaAhora});
+      }
+    }
+  }
+
+  // Evita animaciones al cambiar de ejercicio o reiniciar una posición totalmente distinta
+  if(cambios.length<2 || cambios.length>4) return;
+
+  const salidas=cambios.filter(c=>
+    c.antes &&
+    (!c.ahora ||
+      c.antes.color!==c.ahora.color ||
+      c.antes.type!==c.ahora.type)
+  );
+
+  const llegadas=cambios.filter(c=>
+    c.ahora &&
+    (!c.antes ||
+      c.antes.color!==c.ahora.color ||
+      c.antes.type!==c.ahora.type)
+  );
+
+  const movimientos=[];
+
+  for(const salida of salidas){
+    let llegada=llegadas.find(c=>
+      c.ahora.color===salida.antes.color &&
+      c.ahora.type===salida.antes.type
+    );
+
+    // Promociones: peón que llega convertido en otra pieza
+    if(!llegada && salida.antes.type==='p'){
+      llegada=llegadas.find(c=>
+        c.ahora.color===salida.antes.color &&
+        (c.sq[1]==='1' || c.sq[1]==='8')
+      );
+    }
+
+    if(llegada && !movimientos.some(m=>m.to===llegada.sq)){
+      movimientos.push({from:salida.sq,to:llegada.sq});
+    }
+  }
+
+  if(!movimientos.length) return;
+
+  const tableroRect=boardEl.getBoundingClientRect();
+
+  movimientos.forEach(({from,to})=>{
+    const origen=cellOf(from);
+    const destino=cellOf(to);
+    const piezaFinal=destino ? destino.querySelector('.pc') : null;
+
+    if(!origen || !destino || !piezaFinal) return;
+
+    
+
+
+
+
+
+
+
+    const ro=origen.getBoundingClientRect();
+const rd=destino.getBoundingClientRect();
+const rp=piezaFinal.getBoundingClientRect();
+
+// Copia visible con el mismo tamaño real de las piezas del tablero
+const piezaAnimada=piezaFinal.cloneNode(true);
+piezaAnimada.classList.add('pc-animada');
+
+const inicioX=ro.left-tableroRect.left+(ro.width-rp.width)/2;
+const inicioY=ro.top-tableroRect.top+(ro.height-rp.height)/2;
+const finalX=rp.left-tableroRect.left;
+const finalY=rp.top-tableroRect.top;
+
+piezaAnimada.style.cssText=
+  'position:absolute;'+
+  'left:'+inicioX+'px;'+
+  'top:'+inicioY+'px;'+
+  'width:'+rp.width+'px;'+
+  'height:'+rp.height+'px;'+
+  'margin:0;'+
+  'z-index:20;'+
+  'pointer-events:none;'+
+  'transform:translate3d(0,0,0);'+
+  'transition:transform .22s linear;';
+
+const svgAnimado=piezaAnimada.querySelector('svg');
+if(svgAnimado){
+  svgAnimado.style.width='100%';
+  svgAnimado.style.height='100%';
+  svgAnimado.style.display='block';
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    
+
+    // Oculta la pieza final mientras llega la pieza animada
+    // Oculta la pieza definitiva hasta que la animación llegue a su destino
+piezaFinal.style.visibility='hidden';
+
+// Si la jugada captura una pieza, la recrea temporalmente en su casilla
+// para que desaparezca de forma gradual al llegar la pieza atacante.
+const capturada=antes.get(to);
+const piezaQueLlega=ahora.get(to);
+let piezaCapturada=null;
+
+if(capturada && piezaQueLlega && capturada.color!==piezaQueLlega.color){
+  piezaCapturada=document.createElement('span');
+  piezaCapturada.className='pc pc-capturada';
+  piezaCapturada.innerHTML=
+    PIECES[(capturada.color==='w'?'w':'b')+capturada.type.toUpperCase()];
+
+  piezaCapturada.style.cssText=
+    'position:absolute;'+
+    'left:'+finalX+'px;'+
+    'top:'+finalY+'px;'+
+    'width:'+rp.width+'px;'+
+    'height:'+rp.height+'px;'+
+    'margin:0;'+
+    'z-index:19;'+
+    'pointer-events:none;'+
+    'opacity:1;'+
+    'transition:opacity .14s ease-out .08s;';
+
+  const svgCapturada=piezaCapturada.querySelector('svg');
+  if(svgCapturada){
+    svgCapturada.style.width='100%';
+    svgCapturada.style.height='100%';
+    svgCapturada.style.display='block';
+  }
+
+  boardEl.appendChild(piezaCapturada);
+}
+
+boardEl.appendChild(piezaAnimada);
+
+requestAnimationFrame(()=>requestAnimationFrame(()=>{
+  piezaAnimada.style.transform=
+    'translate3d('+
+    (finalX-inicioX)+'px,'+
+    (finalY-inicioY)+'px,0)';
+
+  // La pieza capturada se desvanece cuando la atacante se acerca
+  if(piezaCapturada) piezaCapturada.style.opacity='0';
+}));
+
+let terminada=false;
+
+const terminar=()=>{
+  if(terminada) return;
+  terminada=true;
+
+  piezaAnimada.remove();
+  if(piezaCapturada) piezaCapturada.remove();
+
+  piezaFinal.style.visibility='';
+};
+
+
+
+    
+
+    piezaAnimada.addEventListener('transitionend',terminar,{once:true});
+    setTimeout(terminar,380);
+  });
 }
 
 
