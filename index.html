@@ -773,7 +773,7 @@ footer a{color:var(--muted)}
    <!-- NUEVO: Reiniciar / Ant / Sig debajo del tablero, cerca de la mano -->
     <div style="display:flex; gap:.5rem; width:100%; max-width:560px; margin:.7rem auto 0;">
       <button class="btn" id="b-reset" style="flex:1; justify-content:center; padding:.6rem .4rem; font-size:0.95rem; font-weight:600;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 3-6.7L3 8m0-5v5h5"/></svg>Reiniciar</button>
-      <button class="btn" id="b-edit" style="flex:1; justify-content:center; padding:.6rem .4rem; font-size:0.95rem; font-weight:600;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>Analizar9</button>
+      <button class="btn" id="b-edit" style="flex:1; justify-content:center; padding:.6rem .4rem; font-size:0.95rem; font-weight:600;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>Analizar10</button>
       <button class="btn" id="b-prev-top" style="flex:1; justify-content:center; padding:.6rem .4rem; font-size:0.95rem; font-weight:600;">◂ Ant</button>
       
       <button class="btn" id="b-next-top" style="flex:1; justify-content:center; padding:.6rem .4rem; font-size:0.95rem; font-weight:600;">Sig ▸</button>
@@ -3891,9 +3891,14 @@ function renderProgress(){
 
 /* ---------- navegación ---------- */
 function go(delta){
+  detenerSolucion();
+
   state.i=(state.i+delta+state.list.length)%state.list.length;
   load(curr());
 }
+
+
+  
 function jumpToNumber(n){
   n=parseInt(n,10); if(!n||n<1||n>1128)return;
   // si el filtro actual no contiene n, pasar a 'todos'
@@ -4127,31 +4132,71 @@ $('b-hint').onclick=()=>{
 
 
 
+let temporizadorSolucion=null;
+let reproduciendoSolucion=false;
+
+function detenerSolucion(){
+  if(temporizadorSolucion){
+    clearTimeout(temporizadorSolucion);
+    temporizadorSolucion=null;
+  }
+
+  reproduciendoSolucion=false;
+  state.busy=false;
+}
+
 $('b-sol').onclick=()=>playSolution();
+
 function playSolution(){
-  if(state.freemode||state.busy)return;
-  state.busy=true; clearMarks();
+  if(state.freemode || state.busy) return;
+
+  detenerSolucion();
+
+  state.busy=true;
+  reproduciendoSolucion=true;
+  clearMarks();
+
   const stepThru=()=>{
-  
-  
-  
-  
-  if(state.step>=state.uci.length){state.busy=false;state.freemode=true;state.anaMoves=state.game.history({verbose:true});state.anaPtr=state.anaMoves.length;mostrarBarraAnalisis(true);setStatus('done','Línea completa. Ahora puedes mover libremente para analizar.');return;}
-  
-  
-  
-  
-  
+    // Si cambiaste de ejercicio o se canceló la solución, no mueve nada más.
+    if(!reproduciendoSolucion) return;
+
+    if(state.step>=state.uci.length){
+      detenerSolucion();
+
+      state.freemode=true;
+      state.anaMoves=state.game.history({verbose:true});
+      state.anaPtr=state.anaMoves.length;
+      mostrarBarraAnalisis(true);
+
+      setStatus(
+        'done',
+        'Línea completa. Ahora puedes mover libremente para analizar.'
+      );
+
+      return;
+    }
+
     const u=state.uci[state.step];
-    state.game.move({from:u.slice(0,2),to:u.slice(2,4),promotion:'q'});
-    flash(u.slice(2,4), state.step%2===0?'good':'last');
-    state.step++; renderBoard(); renderMoves();
-    
-    // Mantiene el tiempo de transición fluido establecido previamente
-    setTimeout(stepThru,900);
+
+    state.game.move({
+      from:u.slice(0,2),
+      to:u.slice(2,4),
+      promotion:'q'
+    });
+
+    flash(u.slice(2,4),state.step%2===0?'good':'last');
+
+    state.step++;
+    renderBoard();
+    renderMoves();
+
+    temporizadorSolucion=setTimeout(stepThru,900);
   };
+
   stepThru();
 }
+
+  
 
 
 
