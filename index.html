@@ -773,7 +773,7 @@ footer a{color:var(--muted)}
    <!-- NUEVO: Reiniciar / Ant / Sig debajo del tablero, cerca de la mano -->
     <div style="display:flex; gap:.5rem; width:100%; max-width:560px; margin:.7rem auto 0;">
       <button class="btn" id="b-reset" style="flex:1; justify-content:center; padding:.6rem .4rem; font-size:0.95rem; font-weight:600;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 3-6.7L3 8m0-5v5h5"/></svg>Reiniciar</button>
-      <button class="btn" id="b-edit" style="flex:1; justify-content:center; padding:.6rem .4rem; font-size:0.95rem; font-weight:600;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>Editar v2</button>
+      <button class="btn" id="b-edit" style="flex:1; justify-content:center; padding:.6rem .4rem; font-size:0.95rem; font-weight:600;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>Editar v28</button>
       <button class="btn" id="b-prev-top" style="flex:1; justify-content:center; padding:.6rem .4rem; font-size:0.95rem; font-weight:600;">◂ Ant</button>
       
       <button class="btn" id="b-next-top" style="flex:1; justify-content:center; padding:.6rem .4rem; font-size:0.95rem; font-weight:600;">Sig ▸</button>
@@ -4167,7 +4167,12 @@ async function compartirLogro(){
     gr.addColorStop(0,'#2c352f'); gr.addColorStop(1,'#1b211e');
     ctx.fillStyle=gr; ctx.fillRect(0,0,W,H);
     // marco dorado
-    ctx.strokeStyle='#d9a441'; ctx.lineWidth=6; ctx.strokeRect(40,40,W-80,H-80);
+    
+    ctx.strokeStyle='rgba(217,164,65,.32)';
+ctx.fillStyle='rgba(217,164,65,.32)';
+ctx.lineWidth=Math.max(4, size*0.09);
+
+const headLen=Math.max(5, size*0.18);
     // contenido
     ctx.textAlign='center';
     ctx.font='120px serif'; ctx.fillText('🏆',W/2,260);
@@ -5198,15 +5203,34 @@ let motor=null, motorOn=false, fenAnalizado='';
   
 function analizarPosicion(){
   if(!motorOn || !motor) return;
-  fenAnalizado=state.game.fen();
+
+  const fenNueva=state.game.fen();
+  fenAnalizado=fenNueva;
+
+  // Quita la flecha anterior apenas cambia la posición
+  const flechaAnterior=boardEl.querySelector('.eng-arrow');
+  if(flechaAnterior) flechaAnterior.remove();
+
+  // Detiene el cálculo anterior antes de pedir el nuevo
   motor.postMessage('stop');
-  motor.postMessage('position fen '+fenAnalizado);
-  
 
-  motor.postMessage('go movetime 400');
+  // Si hubo movimientos rápidos, solo analiza la posición más reciente
+  clearTimeout(analizarPosicion.espera);
 
-  
+  analizarPosicion.espera=setTimeout(()=>{
+    if(!motorOn || !motor || state.game.fen()!==fenNueva) return;
+
+    fenAnalizado=fenNueva;
+    $('eng-line').textContent='Analizando nueva posición…';
+    motor.postMessage('position fen '+fenNueva);
+    motor.postMessage('go movetime 400');
+  },80);
 }
+
+
+
+
+  
 
 
 
@@ -5269,22 +5293,64 @@ function dibujarFlechaMotor(uci){
   const vieja=boardEl.querySelector('.eng-arrow');
   if(vieja) vieja.remove();
   if(!uci || !state.freemode || !motorOn) return;
+
   const pos=sq=>{
     const f='abcdefgh'.indexOf(sq[0]), r=Number(sq[1]);
-    return state.orient==='w' ? {x:f+.5, y:8-r+.5} : {x:7-f+.5, y:r-1+.5};
+    return state.orient==='w'
+      ? {x:f+.5, y:8-r+.5}
+      : {x:7-f+.5, y:r-1+.5};
   };
+
   const a=pos(uci.slice(0,2)), b=pos(uci.slice(2,4));
   const dx=b.x-a.x, dy=b.y-a.y, len=Math.hypot(dx,dy);
+
   if(!len) return;
-  const x2=b.x-(dx/len)*0.35, y2=b.y-(dy/len)*0.35;
+
+  // Deja espacio antes de la casilla final para una punta más discreta
+  const x2=b.x-(dx/len)*0.26;
+  const y2=b.y-(dy/len)*0.26;
+
   const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
   svg.setAttribute('viewBox','0 0 8 8');
   svg.setAttribute('class','eng-arrow');
   svg.style.cssText='position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:6';
-  svg.innerHTML='<defs><marker id="engHead" markerWidth="4" markerHeight="4" refX="2.05" refY="2" orient="auto"><path d="M0,0 L4,2 L0,4 Z" fill="#d9a441"/></marker></defs>'
-    +'<line x1="'+a.x+'" y1="'+a.y+'" x2="'+x2+'" y2="'+y2+'" stroke="#d9a441" stroke-width="0.28" stroke-linecap="round" opacity="0.8" marker-end="url(#engHead)"/>';
+
+
+
+
+  
+  svg.innerHTML=
+  '<defs>'+
+    '<marker id="engHead" viewBox="0 0 6 6" '+
+      'markerWidth="5.2" markerHeight="5.2" '+
+      'refX="5.7" refY="3" orient="auto" markerUnits="strokeWidth">'+
+      '<path d="M0,0 L6,3 L0,6 Z" fill="#d9a441"/>'+
+    '</marker>'+
+  '</defs>'+
+  '<line x1="'+a.x+'" y1="'+a.y+'" x2="'+x2+'" y2="'+y2+'" '+
+    'stroke="#d9a441" stroke-width="0.120" stroke-linecap="round" '+
+    'opacity="0.72" marker-end="url(#engHead)"/>';
+
+
+
+
+
+
+  
+
   boardEl.appendChild(svg);
 }
+
+  
+
+
+
+
+
+
+
+
+  
 
 $('b-engine').onclick=()=>{
 
